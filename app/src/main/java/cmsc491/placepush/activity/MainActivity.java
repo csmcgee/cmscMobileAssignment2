@@ -1,7 +1,13 @@
 package cmsc491.placepush.activity;
 
+import android.app.FragmentManager;
 import android.app.ProgressDialog;
+import android.app.DialogFragment;
+import android.app.Dialog;
 import android.app.SearchManager;
+import android.app.PendingIntent;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Context;
 import android.content.Intent;
 import android.location.Location;
@@ -9,15 +15,19 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.AsyncTask;
 
+import android.support.v4.app.FragmentActivity;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.SearchView;
 import android.widget.TextView;
+import android.widget.Toast;
+
 
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -29,25 +39,50 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.location.Geofence;
+
 import com.google.gson.Gson;
 
 import cmsc491.placepush.GoogleAPI.GooglePlaceResponse;
 import cmsc491.placepush.GoogleAPI.PPGooglePlaceSearch;
 import cmsc491.placepush.R;
 
+import com.google.android.gms.common.api.GoogleApiClient;
 
-public class MainActivity extends ActionBarActivity implements OnMapReadyCallback {
+
+import java.util.ArrayList;
+
+
+
+public class MainActivity extends ActionBarActivity
+        implements OnMapReadyCallback, MarkerConfirmation.NoticeDialogListener{
 
     public LocationManager locationManager;
     public MapLocationListener mapLocationListener = new MapLocationListener();
+
+
+
     private GoogleMap gMap;
     private Marker posMarker;
     private LatLng currentPosition;
     private ActionBar mActionBar;
     private ProgressBar progress;
+    private float distanceFromMe;
+    private float benchmarkDistance;
+    private Geofence POI;
+    private ArrayList<Geofence> mGeofenceList;
+    private PendingIntent mGeofencePendingIntent;
+    protected GoogleApiClient mGoogleApiClient;
+    private GeofenceControlPanel geoPanel;
+    private Context currentContext;
+    private String queriedLocation;
+    private double newGeoLat, newGeoLon;
+    private String newGeoTitle;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        benchmarkDistance = 200f;
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         progress = (ProgressBar) findViewById(R.id.progressBar);
@@ -66,7 +101,22 @@ public class MainActivity extends ActionBarActivity implements OnMapReadyCallbac
         // intent handling
         handleIntent(getIntent());
 
+        mGeofencePendingIntent = null;
+
+        //initialize geofence list
+        mGeofenceList = new ArrayList<Geofence>();
+
+        // Create new Geofences Control Panel
+        geoPanel = new GeofenceControlPanel(this);
+
+
+
+
+
+
     }
+
+
 
     private void handleIntent(Intent intent){
         // Handle Search Intent
@@ -77,6 +127,8 @@ public class MainActivity extends ActionBarActivity implements OnMapReadyCallbac
 
         }
     }
+
+
 
     private class WebRequestTask extends AsyncTask<String, Integer, String> {
 
@@ -112,6 +164,8 @@ public class MainActivity extends ActionBarActivity implements OnMapReadyCallbac
             gMap.animateCamera(cu);
         }
     }
+
+
 
     @Override
     protected void onNewIntent(Intent intent){
@@ -158,7 +212,7 @@ public class MainActivity extends ActionBarActivity implements OnMapReadyCallbac
     @Override
     public void onMapReady(GoogleMap googleMap) {
         gMap = googleMap;
-
+        currentContext = this;
         gMap.setInfoWindowAdapter(new GoogleMap.InfoWindowAdapter() {
             @Override
             public View getInfoWindow(Marker marker) {
@@ -182,26 +236,83 @@ public class MainActivity extends ActionBarActivity implements OnMapReadyCallbac
         });
 
 
+        // Place current position marker on the map if Location services are enabled
         Location location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-        LatLng coordinates = new LatLng(location.getLatitude(), location.getLongitude());
-        posMarker = gMap.addMarker(new MarkerOptions()
-            .position(coordinates));
-        currentPosition = coordinates;
-        gMap.moveCamera(CameraUpdateFactory.newLatLng(coordinates));
-        gMap.moveCamera(CameraUpdateFactory.zoomTo(15));
+        if(location != null) {
+            final LatLng myCoordinates = new LatLng(location.getLatitude(), location.getLongitude());
+            posMarker = gMap.addMarker(new MarkerOptions()
+                    .position(myCoordinates));
+            currentPosition = myCoordinates;
+            gMap.moveCamera(CameraUpdateFactory.newLatLng(myCoordinates));
+            gMap.moveCamera(CameraUpdateFactory.zoomTo(15));
+        }
 
+        // Set the onClickListener for the markers on the map
+        gMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
+            @Override
+            public boolean onMarkerClick(Marker marker) {
 
+                Log.i("MARKER", "CLICKED");
+                LatLng coords = marker.getPosition();
+                newGeoLon = coords.longitude;
+                newGeoLat = coords.latitude;
+                newGeoTitle = marker.getTitle();
+                float[] results = new float[3];
+                Location.distanceBetween(currentPosition.latitude, currentPosition.longitude, coords.latitude, coords.longitude, results);
+                distanceFromMe = results[0];
+                Log.i("DISTANCE", String.valueOf(results[0]));
+
+                if(distanceFromMe <= benchmarkDistance) {
+                    Context context = getApplicationContext();
+                    CharSequence text = "Already within " + String.valueOf(benchmarkDistance) + " meters.";
+                    int duration = Toast.LENGTH_SHORT;
+
+                    Toast toast = Toast.makeText(context, text, duration);
+                    toast.show();
+
+                }
+                MarkerConfirmation conf = new MarkerConfirmation();
+                conf.show(getFragmentManager(), "MarkerConfirmation");
+                return false;
+            }
+        });
+    }
+
+    public void onDialogYes(){
+        geoPanel.addNewGeofence(newGeoLat, newGeoLon, benchmarkDistance, newGeoTitle);
+        Log.i("LOCATION", newGeoTitle);
+        geoPanel.addGeofencesMarkerChosen(currentContext);
+    }
+
+    @Override
+    protected void onStart(){
+        super.onStart();
+        geoPanel.connectApiClient();
+    }
+
+    @Override
+    protected void onStop(){
+        super.onStop();
+        geoPanel.disconnectApiClient();
     }
 
     private class MapLocationListener implements LocationListener {
 
         @Override
         public void onLocationChanged(Location location) {
-            LatLng coordinates = new LatLng(location.getLatitude(), location.getLongitude());
-            currentPosition = coordinates;
-            posMarker.setPosition(coordinates);
-            gMap.moveCamera(CameraUpdateFactory.newLatLng(coordinates));
+            if(location != null) {
+                LatLng coordinates = new LatLng(location.getLatitude(), location.getLongitude());
+                if(posMarker != null)
+                    posMarker.setPosition(coordinates);
+                else{
+                    posMarker = gMap.addMarker(new MarkerOptions().position(coordinates));
+                    gMap.moveCamera(CameraUpdateFactory.newLatLng(coordinates));
+                    gMap.animateCamera(CameraUpdateFactory.zoomTo(15));
 
+                }
+                currentPosition = coordinates;
+            }
+            else Log.i("LOCATION", "NULL");
         }
 
         @Override
@@ -218,5 +329,17 @@ public class MainActivity extends ActionBarActivity implements OnMapReadyCallbac
         public void onProviderDisabled(String provider) {
 
         }
+    }
+
+    @Override
+    public void onDialogPositiveClick(DialogFragment dialog) {
+        geoPanel.addNewGeofence(newGeoLat, newGeoLon, benchmarkDistance, newGeoTitle);
+        Log.i("LOCATION", newGeoTitle);
+        geoPanel.addGeofencesMarkerChosen(currentContext);
+    }
+
+    @Override
+    public void onDialogNegativeClick(DialogFragment dialog) {
+
     }
 }
