@@ -16,7 +16,7 @@ public class PPGooglePlaceSearch implements IGooglePlaceSearch {
     public String searchPlaces(String query, double lat, double lng) {
         try {
             query = URLEncoder.encode(query, "UTF-8");
-            String full_url = String.format("%s&query=%s&location=%.6f,%.6f&radius=50000", GOOGLE_URL, query, lat, lng);
+            String full_url = String.format("%s&query=%s&location=%.6f,%.6f&radius=10000", GOOGLE_URL, query, lat, lng);
             URL url = new URL(full_url);
             HttpsURLConnection connection = (HttpsURLConnection) url.openConnection();
 

@@ -1,4 +1,4 @@
-package cmsc491.placepush.activity;
+package cmsc491.placepush.geofence;
 
 import android.app.PendingIntent;
 
@@ -9,32 +9,30 @@ import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.Geofence;
 import com.google.android.gms.location.GeofencingRequest;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.maps.GoogleMap;
-import com.google.android.gms.maps.OnMapReadyCallback;
-import android.app.PendingIntent;
+
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import java.util.ArrayList;
 
+import cmsc491.placepush.GoogleAPI.GooglePlaceResponse;
+
 /**
  * Created by IanKop1 on 4/23/2015.
  */
 public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, ResultCallback<Status> {
 
-    private Geofence POI;
     private ArrayList<Geofence> mGeofenceList;
     private PendingIntent mGeofencePendingIntent;
     protected GoogleApiClient mGoogleApiClient;
     private int geofence_id;
-    protected static final String TAG = "creating-and-monitoring-geofences";
+    protected static final String TAG = "cm-geofences";
     private int MILLISECOND_MULTIPLIER = 1000;
     private int LOITERING_DELAY_SECS = 5;
 
 
     public GeofenceControlPanel(Context context){
-
         geofence_id = 0;
         mGeofenceList = new ArrayList<Geofence>();
         mGeofencePendingIntent = null;
@@ -58,23 +56,6 @@ public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks
         mGoogleApiClient.disconnect();
     }
 
-    public void addNewGeofence(double lat, double lon, float distance, String title){
-
-        mGeofenceList.add(new Geofence.Builder()
-                // Set the request ID of the geofence. This is a string to identify this
-                // geofence.
-                .setRequestId(title)
-
-                .setCircularRegion(lat, lon, distance)
-                .setExpirationDuration(Geofence.NEVER_EXPIRE)
-                .setLoiteringDelay(LOITERING_DELAY_SECS * MILLISECOND_MULTIPLIER)
-                .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER |
-                        Geofence.GEOFENCE_TRANSITION_DWELL |
-                        Geofence.GEOFENCE_TRANSITION_EXIT)
-                .build());
-
-    }
-
     private GeofencingRequest getGeofencingRequest() {
         GeofencingRequest.Builder builder = new GeofencingRequest.Builder();
         builder.setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_DWELL);
@@ -82,12 +63,17 @@ public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks
         return builder.build();
     }
 
-    private PendingIntent getGeofencePendingIntent(Context context) {
+    private PendingIntent getGeofencePendingIntent(Context context, GooglePlaceResponse.Place place) {
         // Reuse the PendingIntent if we already have it.
         if (mGeofencePendingIntent != null) {
             return mGeofencePendingIntent;
         }
         Intent intent = new Intent(context, GeofenceTransitionsIntentService.class);
+        intent.putExtra("title", place.name);
+        intent.putExtra("address", place.formatted_address);
+        intent.putExtra("lat", place.geometry.location.lat);
+        intent.putExtra("lng", place.geometry.location.lng);
+
         // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
         // calling addGeofences() and removeGeofences().
         return PendingIntent.getService(context, 0, intent, PendingIntent.
@@ -96,13 +82,27 @@ public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks
 
     }
 
-    public void addGeofencesMarkerChosen(Context context) {
+    public void addGeofencesMarkerChosen(Context context, GooglePlaceResponse.Place place, float distance) {
         if (!mGoogleApiClient.isConnected()) {
             Log.i("MarkerChosen", "mGoogleApiClient not connected");
             return;
         }
 
         try {
+            // empty list
+            mGeofenceList = new ArrayList<Geofence>();
+            mGeofenceList.add(new Geofence.Builder()
+                    // Set the request ID of the geofence. This is a string to identify this
+                    // geofence.
+                    .setRequestId(place.name)
+                    .setCircularRegion(place.geometry.location.lat, place.geometry.location.lng, distance)
+                    .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                    .setLoiteringDelay(LOITERING_DELAY_SECS * MILLISECOND_MULTIPLIER)
+                    .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER |
+                            Geofence.GEOFENCE_TRANSITION_DWELL |
+                            Geofence.GEOFENCE_TRANSITION_EXIT)
+                    .build());
+
             LocationServices.GeofencingApi.addGeofences(
                     mGoogleApiClient,
                     // The GeofenceRequest object.
@@ -110,7 +110,7 @@ public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks
                     // A pending intent that that is reused when calling removeGeofences(). This
                     // pending intent is used to generate an intent when a matched geofence
                     // transition is observed.
-                    getGeofencePendingIntent(context)
+                    getGeofencePendingIntent(context, place)
             ).setResultCallback(this); // Result processed in onResult().
         } catch (SecurityException securityException) {
             // Catch exception generated if the app does not use ACCESS_FINE_LOCATION permission.

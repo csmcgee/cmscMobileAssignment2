@@ -8,7 +8,7 @@ import android.app.Dialog;
 import android.os.Bundle;
 import android.app.AlertDialog;
 
-import com.google.android.gms.maps.model.Marker;
+import cmsc491.placepush.R;
 
 /**
  * Created by IanKop1 on 4/25/2015.
@@ -45,14 +45,14 @@ public class MarkerConfirmation extends DialogFragment {
     public Dialog onCreateDialog(Bundle savedInstanceState) {
         // Build the dialog and set up the button click handlers
         AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
-        builder.setMessage("Set this location?")
-                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+        builder.setMessage(getString(R.string.confirmation_text))
+                .setPositiveButton(getString(R.string.confirm_yes), new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
                         // Send the positive button event back to the host activity
                         mListener.onDialogPositiveClick(MarkerConfirmation.this);
                     }
                 })
-                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                .setNegativeButton(getString(R.string.confirm_no), new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
                         // Send the negative button event back to the host activity
                         mListener.onDialogNegativeClick(MarkerConfirmation.this);

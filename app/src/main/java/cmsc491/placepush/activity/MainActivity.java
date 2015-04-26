@@ -1,21 +1,16 @@
 package cmsc491.placepush.activity;
 
-import android.app.FragmentManager;
-import android.app.ProgressDialog;
 import android.app.DialogFragment;
-import android.app.Dialog;
 import android.app.SearchManager;
 import android.app.PendingIntent;
-import android.app.AlertDialog;
-import android.content.DialogInterface;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.AsyncTask;
 
-import android.support.v4.app.FragmentActivity;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
@@ -35,6 +30,7 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
@@ -46,8 +42,7 @@ import com.google.gson.Gson;
 import cmsc491.placepush.GoogleAPI.GooglePlaceResponse;
 import cmsc491.placepush.GoogleAPI.PPGooglePlaceSearch;
 import cmsc491.placepush.R;
-
-import com.google.android.gms.common.api.GoogleApiClient;
+import cmsc491.placepush.geofence.GeofenceControlPanel;
 
 
 import java.util.ArrayList;
@@ -59,38 +54,32 @@ public class MainActivity extends ActionBarActivity
 
     public LocationManager locationManager;
     public MapLocationListener mapLocationListener = new MapLocationListener();
-
-
-
     private GoogleMap gMap;
+    private GooglePlaceResponse.Place savedPlace;
+    private Marker savedMarker;
     private Marker posMarker;
     private LatLng currentPosition;
     private ActionBar mActionBar;
     private ProgressBar progress;
     private float distanceFromMe;
-    private float benchmarkDistance;
-    private Geofence POI;
+    private float benchmarkDistance = 200f;
     private ArrayList<Geofence> mGeofenceList;
     private PendingIntent mGeofencePendingIntent;
-    protected GoogleApiClient mGoogleApiClient;
     private GeofenceControlPanel geoPanel;
     private Context currentContext;
-    private String queriedLocation;
     private double newGeoLat, newGeoLon;
-    private String newGeoTitle;
-
+    private String newGeoTitle, newGeoSnippet;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        benchmarkDistance = 200f;
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         progress = (ProgressBar) findViewById(R.id.progressBar);
 
         intializeMap();
         locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
-        // minimum 25 meters, every 5 seconds
-        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 25, mapLocationListener);
+        // minimum 10 meters, every 5 seconds
+        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 10, mapLocationListener);
 
         // Action bar configurations
         mActionBar = getSupportActionBar();
@@ -108,15 +97,7 @@ public class MainActivity extends ActionBarActivity
 
         // Create new Geofences Control Panel
         geoPanel = new GeofenceControlPanel(this);
-
-
-
-
-
-
     }
-
-
 
     private void handleIntent(Intent intent){
         // Handle Search Intent
@@ -124,11 +105,15 @@ public class MainActivity extends ActionBarActivity
             String query = intent.getStringExtra(SearchManager.QUERY);
             progress.setVisibility(View.VISIBLE);
             new WebRequestTask().execute(query);
-
+        }else if(intent.getAction().equals("GeofenceAlert")){
+            String name = intent.getStringExtra("title");
+            String address = intent.getStringExtra("address");
+            double lat = intent.getDoubleExtra("lat", 0);
+            double lng = intent.getDoubleExtra("lng", 0);
+            GooglePlaceResponse.Place place = new GooglePlaceResponse.Place(name, address, lat, lng);
+            savedPlace = place;
         }
     }
-
-
 
     private class WebRequestTask extends AsyncTask<String, Integer, String> {
 
@@ -152,10 +137,7 @@ public class MainActivity extends ActionBarActivity
                 GooglePlaceResponse.Place place = response.results.get(i);
                 LatLng coordinates = new LatLng(place.geometry.location.lat, place.geometry.location.lng);
                 builder.include(coordinates);
-                MarkerOptions marker = new MarkerOptions().position(coordinates);
-                marker.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
-                marker.title(place.name);
-                marker.snippet(place.formatted_address);
+                MarkerOptions marker = buildGooglePlaceMarker(place, coordinates);
                 gMap.addMarker(marker);
             }
 
@@ -165,7 +147,13 @@ public class MainActivity extends ActionBarActivity
         }
     }
 
-
+    private MarkerOptions buildGooglePlaceMarker(GooglePlaceResponse.Place place, LatLng coordinates){
+        MarkerOptions marker = new MarkerOptions().position(coordinates);
+        marker.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
+        marker.title(place.name);
+        marker.snippet(place.formatted_address);
+        return marker;
+    }
 
     @Override
     protected void onNewIntent(Intent intent){
@@ -213,6 +201,7 @@ public class MainActivity extends ActionBarActivity
     public void onMapReady(GoogleMap googleMap) {
         gMap = googleMap;
         currentContext = this;
+
         gMap.setInfoWindowAdapter(new GoogleMap.InfoWindowAdapter() {
             @Override
             public View getInfoWindow(Marker marker) {
@@ -235,7 +224,6 @@ public class MainActivity extends ActionBarActivity
             }
         });
 
-
         // Place current position marker on the map if Location services are enabled
         Location location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
         if(location != null) {
@@ -247,16 +235,16 @@ public class MainActivity extends ActionBarActivity
             gMap.moveCamera(CameraUpdateFactory.zoomTo(15));
         }
 
-        // Set the onClickListener for the markers on the map
-        gMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
-            @Override
-            public boolean onMarkerClick(Marker marker) {
+        gMap.setOnInfoWindowClickListener(new GoogleMap.OnInfoWindowClickListener(){
 
+            @Override
+            public void onInfoWindowClick(Marker marker) {
                 Log.i("MARKER", "CLICKED");
                 LatLng coords = marker.getPosition();
                 newGeoLon = coords.longitude;
                 newGeoLat = coords.latitude;
                 newGeoTitle = marker.getTitle();
+                newGeoSnippet = marker.getSnippet();
                 float[] results = new float[3];
                 Location.distanceBetween(currentPosition.latitude, currentPosition.longitude, coords.latitude, coords.longitude, results);
                 distanceFromMe = results[0];
@@ -273,15 +261,20 @@ public class MainActivity extends ActionBarActivity
                 }
                 MarkerConfirmation conf = new MarkerConfirmation();
                 conf.show(getFragmentManager(), "MarkerConfirmation");
-                return false;
             }
         });
-    }
 
-    public void onDialogYes(){
-        geoPanel.addNewGeofence(newGeoLat, newGeoLon, benchmarkDistance, newGeoTitle);
-        Log.i("LOCATION", newGeoTitle);
-        geoPanel.addGeofencesMarkerChosen(currentContext);
+        if(savedPlace != null){
+            LatLng placeCoordinates = new LatLng(savedPlace.geometry.location.lat, savedPlace.geometry.location.lng);
+            MarkerOptions marker = buildGooglePlaceMarker(savedPlace,placeCoordinates);
+            savedMarker = gMap.addMarker(marker);
+            CircleOptions circleOptions = new CircleOptions()
+                    .center(placeCoordinates)
+                    .radius(200)
+                    .fillColor(Color.argb(75, 0, 255, 255))
+                    .strokeColor(Color.argb(75, 0, 200, 200));
+            gMap.addCircle(circleOptions);
+        }
     }
 
     @Override
@@ -333,9 +326,23 @@ public class MainActivity extends ActionBarActivity
 
     @Override
     public void onDialogPositiveClick(DialogFragment dialog) {
-        geoPanel.addNewGeofence(newGeoLat, newGeoLon, benchmarkDistance, newGeoTitle);
+        //geoPanel.addNewGeofence(newGeoLat, newGeoLon, benchmarkDistance, newGeoTitle, newGeoSnippet);
         Log.i("LOCATION", newGeoTitle);
-        geoPanel.addGeofencesMarkerChosen(currentContext);
+        GooglePlaceResponse.Place place = new GooglePlaceResponse.Place(newGeoTitle, newGeoSnippet, newGeoLat, newGeoLon);
+        geoPanel.addGeofencesMarkerChosen(currentContext, place, benchmarkDistance);
+        savedPlace = place;
+        LatLng placeCoordinates = new LatLng(place.geometry.location.lat, place.geometry.location.lng);
+        LatLng currentPosition = posMarker.getPosition();
+        MarkerOptions placeMarkerOptions = buildGooglePlaceMarker(place, placeCoordinates);
+        gMap.clear();
+        savedMarker = gMap.addMarker(placeMarkerOptions);
+        posMarker = gMap.addMarker(new MarkerOptions().position(currentPosition));
+        CircleOptions circleOptions = new CircleOptions()
+                .center(placeCoordinates)
+                .radius(200)
+                .fillColor(Color.argb(75, 0, 255, 255))
+                .strokeColor(Color.argb(75, 0, 200, 200));
+        gMap.addCircle(circleOptions);
     }
 
     @Override

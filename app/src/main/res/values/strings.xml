@@ -2,6 +2,10 @@
     <string name="app_name">PlacePush</string>
     <string name="search_hint">Search Google Places</string>
     <string name="action_search">Search</string>
+    <string name="notification_text">Within 200 meters.</string>
+    <string name="confirmation_text">Would you like a notification when within 200 meters of this location?</string>
+    <string name="confirm_yes">Yes</string>
+    <string name="confirm_no">Cancel</string>
     <!-- Transition type strings -->
     <string name="geofence_transition_entered">PlacePush-Entered</string>
     <string name="geofence_transition_dwelling">PlacePush-Dwelling</string>

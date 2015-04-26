@@ -39,7 +39,7 @@
             <meta-data android:name="android.app.searchable"
                 android:resource="@xml/searchable"/>
         </activity>
-        <service android:name=".activity.GeofenceTransitionsIntentService"/>
+        <service android:name=".geofence.GeofenceTransitionsIntentService"/>
     </application>
 
 </manifest>
