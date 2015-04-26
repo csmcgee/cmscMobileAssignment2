@@ -17,27 +17,22 @@ import android.util.Log;
 import java.util.ArrayList;
 
 import cmsc491.placepush.GoogleAPI.GooglePlaceResponse;
+import cmsc491.placepush.domain.PPConsts;
 
-/**
- * Created by IanKop1 on 4/23/2015.
- */
 public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, ResultCallback<Status> {
 
     private ArrayList<Geofence> mGeofenceList;
     private PendingIntent mGeofencePendingIntent;
     protected GoogleApiClient mGoogleApiClient;
-    private int geofence_id;
     protected static final String TAG = "cm-geofences";
-    private int MILLISECOND_MULTIPLIER = 1000;
-    private int LOITERING_DELAY_SECS = 5;
+    private final int MILLISECOND_MULTIPLIER = 1000;
+    private final int LOITERING_DELAY_SECS = 5;
 
 
     public GeofenceControlPanel(Context context){
-        geofence_id = 0;
         mGeofenceList = new ArrayList<Geofence>();
         mGeofencePendingIntent = null;
         buildGoogleApiClient(context);
-
     }
 
     protected synchronized void buildGoogleApiClient(Context context) {
@@ -69,17 +64,15 @@ public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks
             return mGeofencePendingIntent;
         }
         Intent intent = new Intent(context, GeofenceTransitionsIntentService.class);
-        intent.putExtra("title", place.name);
-        intent.putExtra("address", place.formatted_address);
-        intent.putExtra("lat", place.geometry.location.lat);
-        intent.putExtra("lng", place.geometry.location.lng);
+        intent.putExtra(PPConsts.PLACE_NAME, place.name);
+        intent.putExtra(PPConsts.PLACE_ADDR, place.formatted_address);
+        intent.putExtra(PPConsts.PLACE_LAT, place.geometry.location.lat);
+        intent.putExtra(PPConsts.PLACE_LNG, place.geometry.location.lng);
 
         // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
         // calling addGeofences() and removeGeofences().
         return PendingIntent.getService(context, 0, intent, PendingIntent.
                 FLAG_UPDATE_CURRENT);
-
-
     }
 
     public void addGeofencesMarkerChosen(Context context, GooglePlaceResponse.Place place, float distance) {

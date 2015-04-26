@@ -1,6 +1,5 @@
 package cmsc491.placepush.activity;
 
-
 import android.app.DialogFragment;
 import android.content.DialogInterface;
 import android.app.Activity;
@@ -10,9 +9,6 @@ import android.app.AlertDialog;
 
 import cmsc491.placepush.R;
 
-/**
- * Created by IanKop1 on 4/25/2015.
- */
 public class MarkerConfirmation extends DialogFragment {
 
     /* The activity that creates an instance of this dialog fragment must

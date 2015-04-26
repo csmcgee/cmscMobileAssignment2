@@ -18,10 +18,8 @@ import java.util.List;
 
 import cmsc491.placepush.R;
 import cmsc491.placepush.activity.MainActivity;
+import cmsc491.placepush.domain.PPConsts;
 
-/**
- * Created by IanKop1 on 4/22/2015.
- */
 public class GeofenceTransitionsIntentService extends IntentService {
 
     public String title, address;
@@ -47,29 +45,19 @@ public class GeofenceTransitionsIntentService extends IntentService {
             return;
         }
 
-        title = intent.getStringExtra("title");
-        address = intent.getStringExtra("address");
-        lat = intent.getDoubleExtra("lat", 0);
-        lng = intent.getDoubleExtra("lng", 0);
+        title = intent.getStringExtra(PPConsts.PLACE_NAME);
+        address = intent.getStringExtra(PPConsts.PLACE_ADDR);
+        lat = intent.getDoubleExtra(PPConsts.PLACE_LAT, 0);
+        lng = intent.getDoubleExtra(PPConsts.PLACE_LNG, 0);
 
         // Get the transition type.
         int geofenceTransition = geofencingEvent.getGeofenceTransition();
 
-        // Test that the reported transition was of interest.
-        if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER ||
-                geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT) {
-
-            // Get the geofences that were triggered. A single event can trigger multiple geofences.
+        if(geofenceTransition == Geofence.GEOFENCE_TRANSITION_DWELL ||
+           geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER ||
+           geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT){
             List<Geofence> triggeringGeofences = geofencingEvent.getTriggeringGeofences();
-
-            // Send notification and log the transition details.
-            sendNotification(triggeringGeofences.get(0).getRequestId());
-        }
-
-        if(geofenceTransition == Geofence.GEOFENCE_TRANSITION_DWELL){
-            List<Geofence> triggeringGeofences = geofencingEvent.getTriggeringGeofences();
-            sendNotification(triggeringGeofences.get(0).getRequestId());
-
+            sendNotification(triggeringGeofences.get(0).getRequestId(), geofenceTransition);
         }
     }
 
@@ -86,14 +74,14 @@ public class GeofenceTransitionsIntentService extends IntentService {
         }
     }
 
-    private void sendNotification(String notificationDetails) {
+    private void sendNotification(String notificationDetails, int gfTransitionType) {
         // Create an explicit content Intent that starts the main Activity.
         Intent notificationIntent = new Intent(getApplicationContext(), MainActivity.class);
-        notificationIntent.setAction("GeofenceAlert");
-        notificationIntent.putExtra("title", title);
-        notificationIntent.putExtra("address", address);
-        notificationIntent.putExtra("lat", lat);
-        notificationIntent.putExtra("lng", lng);
+        notificationIntent.setAction(PPConsts.GF_ACTION);
+        notificationIntent.putExtra(PPConsts.PLACE_NAME, title);
+        notificationIntent.putExtra(PPConsts.PLACE_ADDR, address);
+        notificationIntent.putExtra(PPConsts.PLACE_LAT, lat);
+        notificationIntent.putExtra(PPConsts.PLACE_LNG, lng);
 
         // Construct a task stack.
         TaskStackBuilder stackBuilder = TaskStackBuilder.create(this);
@@ -111,6 +99,9 @@ public class GeofenceTransitionsIntentService extends IntentService {
         // Get a notification builder that's compatible with platform versions >= 4
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this);
 
+        String contentText = String.format("%s %s",
+                getTransitionString(gfTransitionType), getString(R.string.notification_text));
+
         builder.setSmallIcon(R.mipmap.ic_launcher)
                 // In a real app, you may want to use a library like Volley
                 // to decode the Bitmap.
@@ -118,7 +109,7 @@ public class GeofenceTransitionsIntentService extends IntentService {
                         R.mipmap.ic_launcher))
                 .setColor(Color.RED)
                 .setContentTitle(notificationDetails)
-                .setContentText(getString(R.string.notification_text))
+                .setContentText(contentText)
                 .setContentIntent(notificationPendingIntent);
 
         // Dismiss notification once the user touches it.
