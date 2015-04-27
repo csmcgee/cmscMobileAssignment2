@@ -15,6 +15,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import java.util.ArrayList;
+import java.util.List;
 
 import cmsc491.placepush.GoogleAPI.GooglePlaceResponse;
 import cmsc491.placepush.domain.PPConsts;
@@ -27,12 +28,14 @@ public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks
     protected static final String TAG = "cm-geofences";
     private final int MILLISECOND_MULTIPLIER = 1000;
     private final int LOITERING_DELAY_SECS = 5;
+    private List<String> geofenceIDs;
 
 
     public GeofenceControlPanel(Context context){
         mGeofenceList = new ArrayList<Geofence>();
         mGeofencePendingIntent = null;
         buildGoogleApiClient(context);
+        geofenceIDs = new ArrayList<String>();
     }
 
     protected synchronized void buildGoogleApiClient(Context context) {
@@ -71,17 +74,24 @@ public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks
 
         // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
         // calling addGeofences() and removeGeofences().
-        return PendingIntent.getService(context, 0, intent, PendingIntent.
+        mGeofencePendingIntent = PendingIntent.getService(context, 0, intent, PendingIntent.
                 FLAG_UPDATE_CURRENT);
+        return mGeofencePendingIntent;
     }
 
     public void addGeofencesMarkerChosen(Context context, GooglePlaceResponse.Place place, float distance) {
         if (!mGoogleApiClient.isConnected()) {
-            Log.i("MarkerChosen", "mGoogleApiClient not connected");
+            Log.i(TAG, "mGoogleApiClient not connected");
             return;
         }
 
         try {
+            // Remove previous geofence
+            if(!geofenceIDs.isEmpty()){
+                LocationServices.GeofencingApi.removeGeofences(mGoogleApiClient, geofenceIDs);
+                geofenceIDs.remove(0);
+            }
+
             // empty list
             mGeofenceList = new ArrayList<Geofence>();
             mGeofenceList.add(new Geofence.Builder()
@@ -96,6 +106,10 @@ public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks
                             Geofence.GEOFENCE_TRANSITION_EXIT)
                     .build());
 
+            // keep track of geofence id request
+            geofenceIDs.add(mGeofenceList.get(0).getRequestId());
+            getGeofencePendingIntent(context, place);
+
             LocationServices.GeofencingApi.addGeofences(
                     mGoogleApiClient,
                     // The GeofenceRequest object.
@@ -103,11 +117,11 @@ public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks
                     // A pending intent that that is reused when calling removeGeofences(). This
                     // pending intent is used to generate an intent when a matched geofence
                     // transition is observed.
-                    getGeofencePendingIntent(context, place)
+                    mGeofencePendingIntent
             ).setResultCallback(this); // Result processed in onResult().
         } catch (SecurityException securityException) {
             // Catch exception generated if the app does not use ACCESS_FINE_LOCATION permission.
-            Log.i("MarkerChosen", "mGoogleApiClient SECURITY exception");
+            Log.i(TAG, "mGoogleApiClient SECURITY exception");
         }
     }
 
@@ -128,6 +142,6 @@ public class GeofenceControlPanel implements GoogleApiClient.ConnectionCallbacks
 
     @Override
     public void onResult(Status status) {
-        Log.i("OnResult", "Called");
+        Log.i(TAG, "onResult(): Called");
     }
 }
